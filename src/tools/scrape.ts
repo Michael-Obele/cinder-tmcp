@@ -36,13 +36,26 @@ export function createScrapeHandler(client: CinderClient) {
     try {
       const result = await client.scrape({ url, mode, screenshot, images });
 
-      let text = `# Scrape Result\n\n**URL:** ${result.url}\n\n`;
-      text += `**Engine:** ${result.metadata.engine}\n`;
-      text += `**Scraped at:** ${result.metadata.scraped_at}\n\n`;
-      text += `---\n\n${result.markdown}`;
+      // Extract title from first markdown heading
+      const titleMatch = result.markdown.match(/^#\s+(.+)/m);
+      const title = titleMatch ? titleMatch[1].trim() : url;
+      const wordCount = result.markdown.split(/\s+/).length;
+
+      const lines: string[] = [
+        `# Scrape Result: ${title}`,
+        "",
+        `**URL:** ${result.url}`,
+        `**Engine:** ${result.metadata.engine}`,
+        `**Scraped at:** ${result.metadata.scraped_at}`,
+        `**Words:** ${wordCount.toLocaleString()}`,
+        "",
+        "---",
+        "",
+        result.markdown,
+      ];
 
       return {
-        content: [{ type: "text" as const, text }],
+        content: [{ type: "text" as const, text: lines.join("\n") }],
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
