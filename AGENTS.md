@@ -93,10 +93,12 @@ The project includes Fly.io deployment files for the free/hobby tier:
 ### Deploy
 
 ```bash
-fly launch --no-deploy          # First time: create app
-fly secrets set CINDER_API_URL=https://your-cinder.fly.dev
-fly deploy                      # Build & deploy
+fly launch --no-deploy                          # First time: create app
+fly secrets set CINDER_API_URL=https://your-cinder.fly.dev   # REQUIRED
+fly deploy                                      # Build & deploy
 ```
+
+> **Important:** `CINDER_API_URL` is required and must be set via `fly secrets set` before deploying.
 
 Deployed Machine costs ~$2/month running, nearly $0 when stopped (only root FS billed).
 

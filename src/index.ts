@@ -67,14 +67,23 @@ serve({
   port: Number(config.PORT),
 });
 
+// Graceful shutdown for Fly.io (sends SIGTERM on deploy/stop)
+process.on("SIGTERM", () => {
+  console.log("🛑 SIGTERM received, shutting down...");
+  process.exit(0);
+});
+
 console.log(`🚀 Cinder MCP server running on port ${config.PORT}`);
 console.log(`   Health: http://localhost:${config.PORT}/health`);
 console.log(`   MCP:    http://localhost:${config.PORT}/mcp`);
 console.log(`   SSE:    http://localhost:${config.PORT}/sse`);
 
 // ---------------------------------------------------------------------------
-// STDIO Transport (for local / CLI usage)
+// STDIO Transport (only when not in Fly.io / production)
 // ---------------------------------------------------------------------------
 
-const stdio_transport = new StdioTransport(server);
-stdio_transport.listen();
+const is_fly_io = process.env.FLY_APP_NAME !== undefined;
+if (!is_fly_io) {
+  const stdio_transport = new StdioTransport(server);
+  stdio_transport.listen();
+}

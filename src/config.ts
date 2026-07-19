@@ -6,7 +6,7 @@ import * as v from "valibot";
  */
 const ConfigSchema = v.object({
   /** Cinder API base URL — must point to your own Cinder instance */
-  CINDER_API_URL: v.pipe(v.string(), v.url("CINDER_API_URL is required — set it to your own Cinder instance URL")),
+  CINDER_API_URL: v.optional(v.pipe(v.string(), v.url()), ""),
 
   /** Optional API key if Cinder requires authentication */
   CINDER_API_KEY: v.optional(v.string(), ""),
@@ -63,6 +63,14 @@ export function getConfig(): Config {
   }
 
   config = parsed.output;
+
+  if (!config.CINDER_API_URL) {
+    console.error(
+      "❌ CINDER_API_URL is required. Set it in your .env or via `fly secrets set CINDER_API_URL=https://your-cinder.fly.dev`",
+    );
+    process.exit(1);
+  }
+
   return config;
 }
 
