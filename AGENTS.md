@@ -82,6 +82,24 @@ bun run typecheck   # TypeScript type checking via tsc --noEmit
 bun install         # Install dependencies
 ```
 
+## Deployment (Fly.io)
+
+The project includes Fly.io deployment files for the free/hobby tier:
+
+- **`Dockerfile`** — Multi-stage build: `oven/bun:1` for deps, `oven/bun:1-slim` for runtime. Runs as non-root `bun` user, exposes port 8080.
+- **`fly.toml`** — `shared-cpu-1x` 256MB VM, scales to zero (`auto_stop_machines = "stop"`, `min_machines_running = 0`). Health check on `/health`. `SIGTERM` graceful shutdown.
+- **`.dockerignore`** — Excludes env files, git, node_modules from build context.
+
+### Deploy
+
+```bash
+fly launch --no-deploy          # First time: create app
+fly secrets set CINDER_API_URL=https://your-cinder.fly.dev
+fly deploy                      # Build & deploy
+```
+
+Deployed Machine costs ~$2/month running, nearly $0 when stopped (only root FS billed).
+
 ## Dependencies
 
 Core: `tmcp`, `@tmcp/adapter-valibot`, `valibot`, `@tmcp/transport-stdio`, `@tmcp/transport-http`, `@tmcp/transport-sse`, `@tmcp/auth`, `srvx`

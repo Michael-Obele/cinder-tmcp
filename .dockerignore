@@ -1,0 +1,12 @@
+.env
+.env.*
+.git/
+.gitignore
+.gitattributes
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+Thumbs.db
+cinder-mcp/

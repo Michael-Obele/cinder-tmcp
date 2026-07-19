@@ -1,0 +1,41 @@
+# fly.toml — Cinder MCP on Fly.io
+# Generated from: https://fly.io/docs/launch/deploy/
+# Machine: shared-cpu-1x 256MB (~$1.94/month running, ~$0.15/GB/mo stopped)
+# Scales to zero when idle — you only pay for the root filesystem when stopped.
+
+app = "cinder-mcp"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  LOG_LEVEL = "info"
+  # Override these with `fly secrets set`:
+  # CINDER_API_URL — required, your own Cinder instance
+  # CINDER_API_KEY — optional
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    grace_period = "3s"
+    interval = "15s"
+    method = "GET"
+    timeout = "4s"
+    path = "/health"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
