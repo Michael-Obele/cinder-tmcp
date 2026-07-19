@@ -1,43 +1,41 @@
-# fly.toml — Cinder MCP on Fly.io
-# Generated from: https://fly.io/docs/launch/deploy/
-# Machine: shared-cpu-1x 256MB (~$1.94/month running, ~$0.15/GB/mo stopped)
-# Scales to zero when idle — you only pay for the root filesystem when stopped.
+# fly.toml app configuration file generated for cinder-tmcp on 2026-07-19T19:37:02Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "cinder-mcp"
-primary_region = "iad"
-kill_signal = "SIGTERM"
-kill_timeout = 10
+app = 'cinder-tmcp'
+primary_region = 'iad'
+kill_signal = 'SIGTERM'
+kill_timeout = '10s'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  PORT = "8080"
-  LOG_LEVEL = "info"
-  # Override these with `fly secrets set`:
-  # CINDER_API_URL — required, your own Cinder instance
-  # CINDER_API_KEY — optional
+  LOG_LEVEL = 'info'
+  PORT = '8080'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
   [http_service.concurrency]
-    type = "requests"
-    soft_limit = 200
+    type = 'requests'
     hard_limit = 250
+    soft_limit = 200
 
   [[http_service.checks]]
-    grace_period = "3s"
-    interval = "15s"
-    method = "GET"
-    timeout = "4s"
-    path = "/health"
+    interval = '15s'
+    timeout = '4s'
+    grace_period = '3s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  memory = "256mb"
-  cpu_kind = "shared"
+  memory = '256mb'
+  cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 256
