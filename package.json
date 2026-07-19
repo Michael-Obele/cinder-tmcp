@@ -1,0 +1,29 @@
+{
+	"name": "cinder-tmcp",
+	"version": "1.0.0",
+	"description": "A TMCP (lightweight MCP) server",
+	"type": "module",
+	"main": "src/index.js",
+	"scripts": {
+		"start": "bun run src/index.js",
+		"dev": "bun run --watch src/index.js}"
+	},
+	"keywords": [
+		"tmcp",
+		"mcp",
+		"server"
+	],
+	"dependencies": {
+		"tmcp": "^1.19.4",
+		"@tmcp/adapter-valibot": "^0.1.6",
+		"valibot": "^1.4.2",
+		"@tmcp/transport-stdio": "^0.4.3",
+		"@tmcp/transport-http": "^0.8.6",
+		"@tmcp/transport-sse": "^0.5.5",
+		"@tmcp/auth": "^0.4.1",
+		"srvx": "^0.11.22"
+	},
+	"devDependencies": {
+		"@types/node": "^24.0.15"
+	}
+}
