@@ -31,36 +31,16 @@ export function createServer(): McpServer {
         tools: { listChanged: false },
       },
       instructions: [
-        "You have access to the Cinder web scraping API through MCP tools.",
+        "Cinder MCP exposes web scraping (scrape/crawl/search) via the Cinder API.",
         "",
-        "## Available Tools",
+        "## Tools at a Glance",
+        "- `cinder_scrape` — scrape single page (smart/static/dynamic), optional screenshots",
+        "- `cinder_crawl` — async BFS crawl, returns task ID, poll with cinder_crawl_status",
+        "- `cinder_crawl_status` — poll crawl job (pending→active→completed/failed)",
+        "- `cinder_search` — web search via Brave, supports domain filters & pagination",
         "",
-        "### `cinder_scrape`",
-        "Scrape a single webpage and get clean, LLM-ready markdown content.",
-        "- Supports smart (auto-detect), static (fast), and dynamic (JS rendering) modes.",
-        "- Optionally capture screenshots or extract images.",
-        "- Best for: single page extraction, RAG pipelines, content analysis.",
-        "",
-        "### `cinder_crawl`",
-        "Asynchronously crawl an entire website with BFS link-following.",
-        "- Returns a task ID — use `cinder_crawl_status` to poll for results.",
-        "- Configurable depth (1-10) and page limit (1-100).",
-        "- Best for: documentation sites, blogs, multi-page content gathering.",
-        "",
-        "### `cinder_crawl_status`",
-        "Check the status of an async crawl job.",
-        "- States: pending → active → completed/failed.",
-        "- Returns results as JSON when completed.",
-        "",
-        "### `cinder_search`",
-        "Search the web using Brave Search API proxied through Cinder.",
-        "- Supports pagination, domain filtering, and result limiting.",
-        "- Best for: finding relevant pages, research, discovering URLs to scrape.",
-        "",
-        "## Best Practices",
-        "- For single-page content, use `cinder_scrape` directly.",
-        "- For multi-page sites, use `cinder_crawl` and poll with `cinder_crawl_status`.",
-        "- Use `cinder_search` first to discover relevant pages, then scrape them.",
+        "## Tips",
+        "- Use `cinder_search` first to discover URLs, then scrape them.",
         "- Crawl jobs are async — always poll until state is `completed` or `failed`.",
       ].join("\n"),
     },
@@ -70,7 +50,7 @@ export function createServer(): McpServer {
   server.tool(
     {
       name: "cinder_scrape",
-      description: "Scrape a single webpage and return clean markdown content",
+      description: "Scrape a single webpage into clean markdown",
       schema: ScrapeSchema,
       annotations: {
         readOnlyHint: true,
@@ -86,8 +66,7 @@ export function createServer(): McpServer {
   server.tool(
     {
       name: "cinder_crawl",
-      description:
-        "Enqueue a URL for asynchronous crawling (returns task ID for polling)",
+      description: "Asynchronously crawl a website (returns task ID — poll with cinder_crawl_status)",
       schema: CrawlSchema,
       annotations: {
         readOnlyHint: true,
@@ -103,7 +82,7 @@ export function createServer(): McpServer {
   server.tool(
     {
       name: "cinder_crawl_status",
-      description: "Get the status and results of an asynchronous crawl job",
+      description: "Poll a crawl job for status and results",
       schema: CrawlStatusSchema,
       annotations: {
         readOnlyHint: true,
@@ -119,7 +98,7 @@ export function createServer(): McpServer {
   server.tool(
     {
       name: "cinder_search",
-      description: "Search the web using Brave Search API",
+      description: "Search the web via Brave (domain filters, pagination)",
       schema: SearchSchema,
       annotations: {
         readOnlyHint: true,
