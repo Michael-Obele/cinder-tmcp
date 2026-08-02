@@ -129,8 +129,9 @@ export interface CrawlResponse {
 
 export interface CrawlPageResult {
   url: string;
-  title: string;
-  preview: string;
+  /** May be absent — the backend omits it when the page has no H1 heading. */
+  title?: string;
+  preview?: string;
 }
 
 export interface CrawlResultData {

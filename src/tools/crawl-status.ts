@@ -15,6 +15,23 @@ export const CrawlStatusSchema = v.object({
 export type CrawlStatusInput = v.InferOutput<typeof CrawlStatusSchema>;
 
 /**
+ * Fallback heading for a crawl page. The backend omits `title` when the
+ * page's markdown has no H1 heading, so derive a readable label from the URL.
+ */
+function pageTitle(page: { title?: string; url: string }): string {
+  const title = page.title?.trim();
+  if (title) return title;
+  try {
+    const path = new URL(page.url).pathname;
+    const last = path.split("/").filter(Boolean).pop();
+    if (last) return decodeURIComponent(last);
+    return new URL(page.url).hostname;
+  } catch {
+    return page.url;
+  }
+}
+
+/**
  * Handler for the cinder_crawl_status tool.
  * Polls for the status of an asynchronous crawl job. The Cinder API now
  * returns a structured `crawl` object (not a raw JSON `result` string).
@@ -44,7 +61,7 @@ export function createCrawlStatusHandler(client: CinderClient) {
         );
 
         for (const page of c.pages) {
-          lines.push(`### ${page.title}`);
+          lines.push(`### ${pageTitle(page)}`);
           lines.push(`🔗 ${page.url}`);
           if (page.preview) {
             lines.push("", `> ${page.preview}`, "");
