@@ -8,15 +8,20 @@ Cinder is a high-performance, self-hosted web scraping API built with Go. This M
 
 - **`cinder_scrape`** — Scrape a single webpage and get clean, LLM-ready markdown
   - Smart/static/dynamic modes (auto-detect, Colly, or Chromedp)
-  - Optional screenshot capture and image extraction
+  - Optional screenshot capture, image extraction, extractive summary, and deterministic CSS-selector extraction
 - **`cinder_crawl`** — Asynchronously crawl entire websites with BFS link-following
   - Configurable depth (1-10) and page limit (1-100)
+  - Path include/exclude globs, webhook notifications
   - Returns a task ID — poll with `cinder_crawl_status`
 - **`cinder_crawl_status`** — Check the status of an async crawl job
   - States: pending → active → completed/failed
-  - Returns results as JSON when completed
+  - Returns a structured `crawl` result (pages with title + preview, failed URLs) when completed
 - **`cinder_search`** — Search the web via Brave Search API (proxied through Cinder)
-  - Pagination, domain filtering, result limiting
+  - Pagination, domain filtering, `requiredText`/`maxAge` filters, `fast` mode
+- **`cinder_monitor`** — Manage change-tracking monitors via the `action` field:
+  - `create` — hash a page's markdown and fire a signed webhook on change
+  - `status` — get monitor config, last hash, and next check time
+  - `delete` — stop monitoring and remove the monitor record
 
 ## Architecture
 
@@ -118,7 +123,8 @@ cinder-tmcp/
 │       ├── scrape.ts         # cinder_scrape tool
 │       ├── crawl.ts          # cinder_crawl tool
 │       ├── crawl-status.ts   # cinder_crawl_status tool
-│       └── search.ts         # cinder_search tool
+│       ├── search.ts         # cinder_search tool
+│       └── monitor.ts        # cinder_monitor tool (create/status/delete)
 ├── cinder-mcp/               # Design docs & implementation notes
 ├── .env.example
 ├── tsconfig.json

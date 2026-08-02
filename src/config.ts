@@ -28,7 +28,7 @@ const ConfigSchema = v.object({
   ),
   OAUTH_ISSUER: v.optional(v.string(), ""),
   OAUTH_AUDIENCE: v.optional(v.string(), ""),
-  OAUTH_SCOPES: v.optional(v.string(), "scrape,crawl,search"),
+  OAUTH_SCOPES: v.optional(v.string(), "scrape,crawl,search,monitor"),
 
   /** Session management */
   REDIS_URL: v.optional(v.string(), ""),

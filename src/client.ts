@@ -4,62 +4,174 @@ import { getConfig } from "./config.js";
 // Types
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Scrape types
+// ---------------------------------------------------------------------------
+
+export interface ScreenshotOpts {
+  width?: number;
+  height?: number;
+  full_page?: boolean;
+  format?: "jpeg" | "png";
+  quality?: number;
+  wait_selector?: string;
+}
+
+export interface ImageProcessOpts {
+  format?: "jpeg" | "png";
+  max_width?: number;
+  quality?: number;
+}
+
+export type ScrapeActionType =
+  | "wait_ms"
+  | "wait_selector"
+  | "click"
+  | "scroll_down"
+  | "scroll_to_bottom";
+
+export interface ScrapeAction {
+  type: ScrapeActionType;
+  ms?: number;
+  selector?: string;
+}
+
+export interface ExtractField {
+  selector: string;
+  attr?: string;
+  multiple?: boolean;
+}
+
+export interface ImageData {
+  url?: string;
+  blob?: string;
+  format?: string;
+  alt?: string;
+  title?: string;
+  source?: string;
+  width?: number;
+  height?: number;
+  size_bytes?: number;
+}
+
+export interface ScreenshotData {
+  blob?: string;
+  url?: string;
+  format?: string;
+  full_page?: boolean;
+  width?: number;
+  height?: number;
+  size_bytes?: number;
+  captured_at?: string;
+}
+
 export interface ScrapeParams {
   url: string;
   mode?: "smart" | "static" | "dynamic";
   screenshot?: boolean;
+  screenshot_opts?: ScreenshotOpts;
   images?: boolean;
+  image_format?: "url" | "blob";
+  max_images?: number;
+  max_image_size_kb?: number;
+  image_process?: ImageProcessOpts;
+  actions?: ScrapeAction[];
+  extract_schema?: Record<string, ExtractField>;
+  summary?: boolean;
+  summary_sentences?: number;
+  redact_pii?: boolean;
+  block_ads?: boolean;
+  remove_base64_images?: boolean;
+  /** @deprecated Use `mode: "dynamic"` instead. */
+  render?: boolean;
 }
 
 export interface ScrapeResult {
   url: string;
   markdown: string;
   html?: string;
-  metadata: {
-    scraped_at: string;
-    engine: string;
-  };
-  screenshot?: string;
-  images?: string[];
+  metadata: Record<string, string>;
+  images?: ImageData[];
+  screenshot?: ScreenshotData;
+  summary?: string;
+  extracted?: Record<string, unknown>;
 }
+
+// ---------------------------------------------------------------------------
+// Crawl types
+// ---------------------------------------------------------------------------
 
 export interface CrawlParams {
   url: string;
+  mode?: "smart" | "static" | "dynamic";
   render?: boolean;
   screenshot?: boolean;
   images?: boolean;
+  image_format?: "url" | "blob";
   maxDepth?: number;
   limit?: number;
+  include_paths?: string[];
+  exclude_paths?: string[];
+  webhook_url?: string;
+  webhook_secret?: string;
 }
 
 export interface CrawlResponse {
   id: string;
   url: string;
   render: boolean;
+  screenshot: boolean;
+  images: boolean;
+  maxDepth: number;
+  limit: number;
+  image_format?: string;
+}
+
+export interface CrawlPageResult {
+  url: string;
+  title: string;
+  preview: string;
+}
+
+export interface CrawlResultData {
+  status: "completed" | "partial" | "failed" | "cancelled";
+  total_pages: number;
+  max_depth: number;
+  limit: number;
+  pages: CrawlPageResult[];
+  failed_urls?: { url: string; error: string }[];
 }
 
 export interface CrawlStatusResponse {
   id: string;
-  state: "pending" | "active" | "completed" | "failed" | "retry";
-  payload?: string;
-  result?: string;
   queue?: string;
-  max_retry?: number;
-  retried?: number;
+  state: "pending" | "active" | "completed" | "failed" | "retry" | "cancelled";
+  crawl?: CrawlResultData;
+  failed_urls?: { url: string; error: string }[];
 }
+
+// ---------------------------------------------------------------------------
+// Search types
+// ---------------------------------------------------------------------------
 
 export interface SearchParams {
   query: string;
   offset?: number;
   limit?: number;
+  mode?: "fast";
   includeDomains?: string[];
   excludeDomains?: string[];
+  requiredText?: string[];
+  maxAge?: 1 | 7 | 30;
 }
 
 export interface SearchResult {
   title: string;
   url: string;
   description: string;
+  domain?: string;
+  id?: string;
+  relevance?: number;
 }
 
 export interface SearchResponse {
@@ -68,6 +180,32 @@ export interface SearchResponse {
   hasMore: boolean;
   nextOffset: number;
   count: number;
+}
+
+// ---------------------------------------------------------------------------
+// Monitor types
+// ---------------------------------------------------------------------------
+
+export interface MonitorParams {
+  url: string;
+  interval_seconds?: number;
+  webhook_url?: string;
+  webhook_secret?: string;
+}
+
+export interface MonitorResponse {
+  id: string;
+  url: string;
+  interval_seconds: number;
+  next_check: string;
+}
+
+export interface MonitorStatusResponse {
+  id: string;
+  url: string;
+  interval_seconds: number;
+  next_check: string;
+  last_hash?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +258,9 @@ export const CINDER_TIMEOUT = {
   crawl: 10_000,
   crawlStatus: 5_000,
   search: 15_000,
+  monitor: 15_000,
+  monitorStatus: 5_000,
+  monitorDelete: 5_000,
 } as const;
 
 /**
@@ -141,7 +282,8 @@ export class CinderClient {
       "Content-Type": "application/json",
     };
     if (this.apiKey) {
-      h["Authorization"] = `Bearer ${this.apiKey}`;
+      // Cinder expects the API key as `X-API-Key` (see API docs §8).
+      h["X-API-Key"] = this.apiKey;
     }
     return h;
   }
@@ -165,6 +307,11 @@ export class CinderClient {
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
+
+      // 204 No Content (e.g. DELETE /v1/monitor/:id) has no body to parse.
+      if (response.status === 204) {
+        return undefined as T;
+      }
 
       if (!response.ok) {
         const errorBody = await response.text().catch(() => "");
@@ -254,6 +401,52 @@ export class CinderClient {
       "/v1/search",
       params,
       CINDER_TIMEOUT.search,
+    );
+  }
+
+  /**
+   * Create a change-tracking monitor (requires Redis).
+   * POST /v1/monitor
+   */
+  async createMonitor(params: MonitorParams): Promise<MonitorResponse> {
+    if (!validateUrl(params.url)) {
+      throw new CinderError(
+        "Invalid or blocked URL. Only HTTP(S) URLs to public hosts are allowed.",
+        400,
+        "",
+      );
+    }
+    return this.request<MonitorResponse>(
+      "POST",
+      "/v1/monitor",
+      params,
+      CINDER_TIMEOUT.monitor,
+    );
+  }
+
+  /**
+   * Get monitor status (config + last hash + next check).
+   * GET /v1/monitor/:id
+   */
+  async getMonitor(id: string): Promise<MonitorStatusResponse> {
+    return this.request<MonitorStatusResponse>(
+      "GET",
+      `/v1/monitor/${encodeURIComponent(id)}`,
+      undefined,
+      CINDER_TIMEOUT.monitorStatus,
+    );
+  }
+
+  /**
+   * Stop monitoring and remove the monitor record.
+   * DELETE /v1/monitor/:id
+   */
+  async deleteMonitor(id: string): Promise<void> {
+    await this.request<void>(
+      "DELETE",
+      `/v1/monitor/${encodeURIComponent(id)}`,
+      undefined,
+      CINDER_TIMEOUT.monitorDelete,
     );
   }
 }

@@ -1,8 +1,9 @@
 import * as v from "valibot";
-import type { CinderClient } from "../client.js";
+import type { CinderClient, CrawlParams } from "../client.js";
 
 /**
  * Schema for the cinder_crawl tool parameters.
+ * Mirrors the Cinder `CrawlRequest` (handlers.CrawlRequest) from the swagger.
  */
 export const CrawlSchema = v.object({
   url: v.pipe(
@@ -10,9 +11,31 @@ export const CrawlSchema = v.object({
     v.description("The root URL to start crawling from"),
     v.url("Must be a valid URL"),
   ),
-  render: v.optional(v.boolean(), false),
+  mode: v.optional(
+    v.pipe(
+      v.picklist(["smart", "static", "dynamic"]),
+      v.description("Scraping mode per page: smart, static, or dynamic"),
+    ),
+    "smart",
+  ),
+  render: v.optional(
+    v.pipe(
+      v.boolean(),
+      v.description("Render JavaScript for each page (headless browser)"),
+    ),
+    false,
+  ),
   screenshot: v.optional(v.boolean(), false),
   images: v.optional(v.boolean(), false),
+  image_format: v.optional(
+    v.pipe(
+      v.picklist(["url", "blob"]),
+      v.description(
+        "Image transport: 'url' (metadata only) or 'blob' (base64)",
+      ),
+    ),
+    "url",
+  ),
   maxDepth: v.optional(
     v.pipe(
       v.number(),
@@ -31,6 +54,34 @@ export const CrawlSchema = v.object({
     ),
     10,
   ),
+  include_paths: v.optional(
+    v.pipe(
+      v.array(v.string()),
+      v.description(
+        "Only follow links whose path matches these globs (e.g. ['/blog/*'])",
+      ),
+    ),
+  ),
+  exclude_paths: v.optional(
+    v.pipe(
+      v.array(v.string()),
+      v.description(
+        "Never follow links whose path matches these globs (exclusion wins)",
+      ),
+    ),
+  ),
+  webhook_url: v.optional(
+    v.pipe(
+      v.string(),
+      v.description("POST the crawl result here on completion"),
+    ),
+  ),
+  webhook_secret: v.optional(
+    v.pipe(
+      v.string(),
+      v.description("HMAC-SHA256 key for the X-Cinder-Signature header"),
+    ),
+  ),
 });
 
 export type CrawlInput = v.InferOutput<typeof CrawlSchema>;
@@ -41,32 +92,35 @@ export type CrawlInput = v.InferOutput<typeof CrawlSchema>;
  */
 export function createCrawlHandler(client: CinderClient) {
   return async (input: Record<string, unknown>) => {
-    const { url, render, screenshot, images, maxDepth, limit } = input as any;
+    const params = input as unknown as CrawlParams;
     try {
-      const result = await client.crawl({
-        url,
-        render,
-        screenshot,
-        images,
-        maxDepth,
-        limit,
-      });
+      const result = await client.crawl(params);
 
-      const text = [
+      const lines: string[] = [
         "# Crawl Job Enqueued",
         "",
         `**URL:** ${result.url}`,
         `**Task ID:** \`${result.id}\``,
         `**Render:** ${result.render}`,
+        `**Screenshot:** ${result.screenshot}`,
+        `**Images:** ${result.images}`,
+        `**Max Depth:** ${result.maxDepth}`,
+        `**Limit:** ${result.limit}`,
+      ];
+      if (result.image_format) {
+        lines.push(`**Image Format:** ${result.image_format}`);
+      }
+
+      lines.push(
         "",
         "---",
         "",
         "Use `cinder_crawl_status` with the task ID above to check progress.",
         "The crawl runs asynchronously — poll until state is `completed` or `failed`.",
-      ].join("\n");
+      );
 
       return {
-        content: [{ type: "text" as const, text }],
+        content: [{ type: "text" as const, text: lines.join("\n") }],
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";

@@ -1,8 +1,9 @@
 import * as v from "valibot";
-import type { CinderClient } from "../client.js";
+import type { CinderClient, SearchParams } from "../client.js";
 
 /**
  * Schema for the cinder_search tool parameters.
+ * Mirrors the Cinder `SearchRequest` (handlers.SearchRequest) from the swagger.
  */
 export const SearchSchema = v.object({
   query: v.pipe(
@@ -27,8 +28,38 @@ export const SearchSchema = v.object({
     ),
     10,
   ),
-  includeDomains: v.optional(v.array(v.string())),
-  excludeDomains: v.optional(v.array(v.string())),
+  mode: v.optional(
+    v.pipe(
+      v.picklist(["fast"]),
+      v.description(
+        "Search speed: 'fast' restricts to recent results (last day)",
+      ),
+    ),
+  ),
+  includeDomains: v.optional(
+    v.pipe(
+      v.array(v.string()),
+      v.description("Restrict results to these domains"),
+    ),
+  ),
+  excludeDomains: v.optional(
+    v.pipe(
+      v.array(v.string()),
+      v.description("Exclude results from these domains"),
+    ),
+  ),
+  requiredText: v.optional(
+    v.pipe(
+      v.array(v.string()),
+      v.description("Only return results containing this text"),
+    ),
+  ),
+  maxAge: v.optional(
+    v.pipe(
+      v.picklist([1, 7, 30]),
+      v.description("Max age in days: 1 (day), 7 (week), 30 (month)"),
+    ),
+  ),
 });
 
 export type SearchInput = v.InferOutput<typeof SearchSchema>;
@@ -39,16 +70,9 @@ export type SearchInput = v.InferOutput<typeof SearchSchema>;
  */
 export function createSearchHandler(client: CinderClient) {
   return async (input: Record<string, unknown>) => {
-    const { query, offset, limit, includeDomains, excludeDomains } =
-      input as any;
+    const params = input as unknown as SearchParams;
     try {
-      const result = await client.search({
-        query,
-        offset,
-        limit,
-        includeDomains,
-        excludeDomains,
-      });
+      const result = await client.search(params);
 
       const lines: string[] = [
         `# Search Results: "${result.query}"`,
@@ -63,6 +87,15 @@ export function createSearchHandler(client: CinderClient) {
         lines.push(`${item.description}`);
         lines.push("");
         lines.push(`🔗 ${item.url}`);
+        const meta: string[] = [];
+        if (item.domain) meta.push(item.domain);
+        if (item.id) meta.push(`id: ${item.id}`);
+        if (typeof item.relevance === "number") {
+          meta.push(`relevance: ${item.relevance}`);
+        }
+        if (meta.length > 0) {
+          lines.push(`_${meta.join(" · ")}_`);
+        }
         lines.push("");
         lines.push("---");
         lines.push("");

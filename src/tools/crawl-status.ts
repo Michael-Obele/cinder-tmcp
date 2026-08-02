@@ -14,24 +14,10 @@ export const CrawlStatusSchema = v.object({
 
 export type CrawlStatusInput = v.InferOutput<typeof CrawlStatusSchema>;
 
-interface CrawlResultData {
-  url: string;
-  markdown: string;
-  title?: string;
-  metadata?: { engine?: string; scraped_at?: string };
-}
-
-interface CrawlResultJson {
-  status: string;
-  total: number;
-  maxDepth: number;
-  limit: number;
-  data: CrawlResultData[];
-}
-
 /**
  * Handler for the cinder_crawl_status tool.
- * Polls for the status of an asynchronous crawl job.
+ * Polls for the status of an asynchronous crawl job. The Cinder API now
+ * returns a structured `crawl` object (not a raw JSON `result` string).
  */
 export function createCrawlStatusHandler(client: CinderClient) {
   return async (input: Record<string, unknown>) => {
@@ -47,54 +33,39 @@ export function createCrawlStatusHandler(client: CinderClient) {
       ];
 
       if (result.queue) lines.push(`**Queue:** ${result.queue}`);
-      if (result.max_retry !== undefined)
-        lines.push(`**Max Retries:** ${result.max_retry}`);
-      if (result.retried !== undefined)
-        lines.push(`**Retried:** ${result.retried}`);
 
-      if (result.state === "completed" && result.result) {
-        try {
-          const parsed: CrawlResultJson = JSON.parse(result.result);
-          lines.push(
-            "",
-            "---",
-            `## Results (${parsed.total} pages, max depth: ${parsed.maxDepth})`,
-            "",
-          );
+      if (result.state === "completed" && result.crawl) {
+        const c = result.crawl;
+        lines.push(
+          "",
+          "---",
+          `## Results (${c.status}, ${c.total_pages} pages, max depth: ${c.max_depth}, limit: ${c.limit})`,
+          "",
+        );
 
-          for (const page of parsed.data) {
-            const title = page.title ?? extractTitle(page.markdown);
-            const words = page.markdown.split(/\s+/).length;
-            lines.push(`### ${title}`);
-            lines.push(`🔗 ${page.url}`);
-            lines.push(`📄 ${words.toLocaleString()} words`);
-            lines.push(
-              page.metadata?.scraped_at
-                ? `⏱ ${page.metadata.scraped_at}`
-                : "",
-            );
-            // First 200 chars as preview
-            const preview = page.markdown
-              .replace(/^#\s+.+$/m, "")
-              .replace(/\n{2,}/g, " ")
-              .trim()
-              .slice(0, 200);
-            if (preview) {
-              lines.push("", `> ${preview}...`, "");
-            }
-            lines.push("");
+        for (const page of c.pages) {
+          lines.push(`### ${page.title}`);
+          lines.push(`🔗 ${page.url}`);
+          if (page.preview) {
+            lines.push("", `> ${page.preview}`, "");
           }
-        } catch {
-          // Fallback: raw JSON if parsing fails
-          lines.push(
-            "",
-            "---",
-            "## Results (raw)",
-            "",
-            "```json",
-            result.result,
-            "```",
-          );
+          lines.push("");
+        }
+
+        if (c.failed_urls && c.failed_urls.length > 0) {
+          lines.push("### Failed URLs", "");
+          for (const f of c.failed_urls) {
+            lines.push(`- ${f.url}: ${f.error}`);
+          }
+        }
+      } else if (
+        result.state === "failed" &&
+        result.failed_urls &&
+        result.failed_urls.length > 0
+      ) {
+        lines.push("", "---", "### Failed URLs", "");
+        for (const f of result.failed_urls) {
+          lines.push(`- ${f.url}: ${f.error}`);
         }
       }
 
@@ -121,16 +92,13 @@ export function createCrawlStatusHandler(client: CinderClient) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return {
         content: [
-          { type: "text" as const, text: `Failed to get crawl status: ${message}` },
+          {
+            type: "text" as const,
+            text: `Failed to get crawl status: ${message}`,
+          },
         ],
         isError: true,
       };
     }
   };
-}
-
-/** Extract first # heading from markdown as a title */
-function extractTitle(markdown: string): string {
-  const match = markdown.match(/^#\s+(.+)/m);
-  return match ? match[1].trim() : "Untitled page";
 }
