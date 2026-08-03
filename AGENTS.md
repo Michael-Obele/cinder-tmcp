@@ -64,7 +64,7 @@ The `client.ts` validates all URLs before sending to Cinder:
 ### Error Handling
 - `CinderError` class with status code and body
 - Tool handlers catch errors and return `isError: true` responses
-- Timeout per endpoint type (scrape: 30s, crawl: 10s, status: 5s, search: 15s)
+- Timeout per endpoint type (scrape: 60s, crawl: 30s, status: 15s, search: 30s) — generous to tolerate the backend's Fly.io scale-to-zero cold starts (~10-15s)
 
 ### OAuth 2.1
 - Uses `@tmcp/auth` SimpleProvider with in-memory stores

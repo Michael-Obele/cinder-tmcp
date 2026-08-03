@@ -253,15 +253,19 @@ function validateUrl(url: string): boolean {
 
 /**
  * Timeout configuration per endpoint type (milliseconds).
+ *
+ * These are deliberately generous: the Cinder backend runs on Fly.io with
+ * scale-to-zero, so a request may first trigger a ~10-15s cold start before
+ * the actual work begins. Tight timeouts turn cold starts into hard failures.
  */
 export const CINDER_TIMEOUT = {
-  scrape: 30_000,
-  crawl: 10_000,
-  crawlStatus: 5_000,
-  search: 15_000,
-  monitor: 15_000,
-  monitorStatus: 5_000,
-  monitorDelete: 5_000,
+  scrape: 60_000,
+  crawl: 30_000,
+  crawlStatus: 15_000,
+  search: 30_000,
+  monitor: 30_000,
+  monitorStatus: 15_000,
+  monitorDelete: 15_000,
 } as const;
 
 /**
