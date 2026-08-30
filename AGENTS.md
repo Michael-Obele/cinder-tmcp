@@ -51,7 +51,7 @@ All endpoints are at `<your-cinder>/v1/`:
 | `cinder_scrape` | POST | `/v1/scrape` | Sync scrape (smart/static/dynamic modes) |
 | `cinder_crawl` | POST | `/v1/crawl` | Async crawl enqueue (returns task ID) |
 | `cinder_crawl_status` | GET | `/v1/crawl/:id` | Poll crawl job status |
-| `cinder_search` | POST | `/v1/search` | Brave Search via Cinder |
+| `cinder_search` | POST | `/v1/search` | Web search (SearXNG primary, Brave fallback) |
 
 ## Key Implementation Details
 

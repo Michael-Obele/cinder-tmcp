@@ -397,7 +397,7 @@ export class CinderClient {
   }
 
   /**
-   * Search the web via Brave Search API.
+   * Search the web via SearXNG (primary) or Brave Search (fallback).
    * POST /v1/search
    */
   async search(params: SearchParams): Promise<SearchResponse> {

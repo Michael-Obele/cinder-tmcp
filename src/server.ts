@@ -38,7 +38,7 @@ export function createServer(): McpServer {
         "- `cinder_scrape` — scrape a single page (smart/static/dynamic), optional screenshots, images, summary, schema extraction",
         "- `cinder_crawl` — async BFS crawl, returns task ID, poll with cinder_crawl_status",
         "- `cinder_crawl_status` — poll crawl job (pending→active→completed/failed)",
-        "- `cinder_search` — web search via Brave, supports domain filters, requiredText, maxAge, pagination",
+        "- `cinder_search` — web search via SearXNG (Brave fallback), supports domain filters, requiredText, maxAge, pagination",
         "- `cinder_monitor` — create/check/delete a change-tracking monitor (use the `action` field)",
         "",
         "## Tips",
@@ -103,7 +103,7 @@ export function createServer(): McpServer {
   server.tool(
     {
       name: "cinder_search",
-      description: "Search the web via Brave (domain filters, pagination)",
+      description: "Search the web via SearXNG with Brave fallback (domain filters, pagination)",
       schema: SearchSchema,
       annotations: {
         readOnlyHint: true,

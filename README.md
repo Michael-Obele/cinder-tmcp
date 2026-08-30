@@ -16,7 +16,7 @@ Cinder is a high-performance, self-hosted web scraping API built with Go. This M
 - **`cinder_crawl_status`** — Check the status of an async crawl job
   - States: pending → active → completed/failed
   - Returns a structured `crawl` result (pages with title + preview, failed URLs) when completed
-- **`cinder_search`** — Search the web via Brave Search API (proxied through Cinder)
+- **`cinder_search`** — Search the web via SearXNG/Brave (proxied through Cinder)
   - Pagination, domain filtering, `requiredText`/`maxAge` filters, `fast` mode
 - **`cinder_monitor`** — Manage change-tracking monitors via the `action` field:
   - `create` — hash a page's markdown and fire a signed webhook on change

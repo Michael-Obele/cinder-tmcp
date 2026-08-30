@@ -66,7 +66,7 @@ export type SearchInput = v.InferOutput<typeof SearchSchema>;
 
 /**
  * Handler for the cinder_search tool.
- * Searches the web via Brave Search API proxied through Cinder.
+ * Searches the web via SearXNG (primary) or Brave Search (fallback) proxied through Cinder.
  */
 export function createSearchHandler(client: CinderClient) {
   return async (input: Record<string, unknown>) => {
