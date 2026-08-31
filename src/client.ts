@@ -82,6 +82,7 @@ export interface ScrapeParams {
   redact_pii?: boolean;
   block_ads?: boolean;
   remove_base64_images?: boolean;
+  include_links?: boolean;
   /** @deprecated Use `mode: "dynamic"` instead. */
   render?: boolean;
 }
@@ -95,6 +96,7 @@ export interface ScrapeResult {
   screenshot?: ScreenshotData;
   summary?: string;
   extracted?: Record<string, unknown>;
+  links?: LinkData[];
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +166,8 @@ export interface SearchParams {
   excludeDomains?: string[];
   requiredText?: string[];
   maxAge?: 1 | 7 | 30;
+  category?: "general" | "news" | "code";
+  rerank?: boolean;
 }
 
 export interface SearchResult {
@@ -173,6 +177,7 @@ export interface SearchResult {
   domain?: string;
   id?: string;
   relevance?: number;
+  highlights?: string[];
 }
 
 export interface SearchResponse {
@@ -181,6 +186,63 @@ export interface SearchResponse {
   hasMore: boolean;
   nextOffset: number;
   count: number;
+}
+
+// ---------------------------------------------------------------------------
+// Link types (mirrors domain.LinkData)
+// ---------------------------------------------------------------------------
+
+export interface LinkData {
+  url: string;
+  text?: string;
+  isInternal: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Map types (POST /v1/map)
+// ---------------------------------------------------------------------------
+
+export interface MapParams {
+  url: string;
+  search?: string;
+  limit?: number;
+}
+
+export interface MapLink {
+  url: string;
+  source: string;
+}
+
+export interface MapResponse {
+  url: string;
+  count: number;
+  links: MapLink[];
+}
+
+// ---------------------------------------------------------------------------
+// Batch types (POST /v1/batch/scrape + GET /v1/batch/:id)
+// ---------------------------------------------------------------------------
+
+export interface BatchParams {
+  urls: string[];
+}
+
+export interface BatchTask {
+  id: string;
+  url: string;
+}
+
+export interface BatchResponse {
+  batch_id: string;
+  tasks: BatchTask[];
+}
+
+export interface BatchStatusResponse {
+  batch_id: string;
+  total: number;
+  completed: number;
+  failed: number;
+  tasks: BatchTask[];
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +328,10 @@ export const CINDER_TIMEOUT = {
   monitor: 30_000,
   monitorStatus: 15_000,
   monitorDelete: 15_000,
+  map: 30_000,
+  batch: 30_000,
+  batchStatus: 15_000,
+  links: 60_000,
 } as const;
 
 /**
@@ -406,6 +472,76 @@ export class CinderClient {
       "/v1/search",
       params,
       CINDER_TIMEOUT.search,
+    );
+  }
+
+  /**
+   * Discover URLs on a site via sitemap/link traversal.
+   * POST /v1/map
+   */
+  async map(params: MapParams): Promise<MapResponse> {
+    if (!validateUrl(params.url)) {
+      throw new CinderError(
+        "Invalid or blocked URL. Only HTTP(S) URLs to public hosts are allowed.",
+        400,
+        "",
+      );
+    }
+    return this.request<MapResponse>("POST", "/v1/map", params, CINDER_TIMEOUT.map);
+  }
+
+  /**
+   * Enqueue a batch scrape job (requires Redis).
+   * POST /v1/batch/scrape
+   */
+  async batchScrape(params: BatchParams): Promise<BatchResponse> {
+    for (const u of params.urls) {
+      if (!validateUrl(u)) {
+        throw new CinderError(
+          `Invalid or blocked URL in batch: ${u}. Only HTTP(S) URLs to public hosts are allowed.`,
+          400,
+          "",
+        );
+      }
+    }
+    return this.request<BatchResponse>(
+      "POST",
+      "/v1/batch/scrape",
+      params,
+      CINDER_TIMEOUT.batch,
+    );
+  }
+
+  /**
+   * Get batch scrape status (requires Redis).
+   * GET /v1/batch/:id
+   */
+  async getBatchStatus(batchId: string): Promise<BatchStatusResponse> {
+    return this.request<BatchStatusResponse>(
+      "GET",
+      `/v1/batch/${encodeURIComponent(batchId)}`,
+      undefined,
+      CINDER_TIMEOUT.batchStatus,
+    );
+  }
+
+  /**
+   * Extract links from a page (via scrape with include_links).
+   * Reuses POST /v1/scrape — same SSRF/timeouts as scrape.
+   */
+  async links(url: string): Promise<ScrapeResult> {
+    if (!validateUrl(url)) {
+      throw new CinderError(
+        "Invalid or blocked URL. Only HTTP(S) URLs to public hosts are allowed.",
+        400,
+        "",
+      );
+    }
+    return this.request<ScrapeResult>(
+      "POST",
+      "/v1/scrape",
+      { url, include_links: true },
+      CINDER_TIMEOUT.links,
     );
   }
 

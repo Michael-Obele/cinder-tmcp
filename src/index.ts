@@ -29,6 +29,45 @@ const sse_transport = new SseTransport(server, {
 
 serve({
   async fetch(request) {
+    // Compatibility: opencode's MCP client sends initialize without protocolVersion
+    // (causes tmcp validation: Expected "protocolVersion" but received undefined).
+    // Inject a default if missing so the handshake succeeds — other clients (VS Code, curl)
+    // already send it and are unchanged.
+    if (request.method === "POST") {
+      try {
+        const url = new URL(request.url);
+        if (url.pathname === "/mcp") {
+          const ct = request.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
+            const cloned = request.clone();
+            const body: any = await cloned.json();
+            const patch = (obj: any) => {
+              if (obj && obj.method === "initialize" && obj.params && !obj.params.protocolVersion) {
+                obj.params.protocolVersion = "2024-11-05";
+                return true;
+              }
+              return false;
+            };
+            let patched = false;
+            if (Array.isArray(body)) {
+              for (const item of body) patched = patch(item) || patched;
+            } else {
+              patched = patch(body);
+            }
+            if (patched) {
+              request = new Request(request.url, {
+                method: request.method,
+                headers: request.headers,
+                body: JSON.stringify(body),
+              });
+            }
+          }
+        }
+      } catch {
+        // ignore parse errors, fall through to normal handling
+      }
+    }
+
     // Try HTTP transport (Streamable HTTP for MCP)
     const http_response = await http_transport.respond(request);
     if (http_response) {

@@ -2,13 +2,8 @@ import { McpServer } from "tmcp";
 import { ValibotJsonSchemaAdapter } from "@tmcp/adapter-valibot";
 import { getConfig } from "./config.js";
 import { CinderClient } from "./client.js";
-import { ScrapeSchema, createScrapeHandler } from "./tools/scrape.js";
-import { CrawlSchema, createCrawlHandler } from "./tools/crawl.js";
-import {
-  CrawlStatusSchema,
-  createCrawlStatusHandler,
-} from "./tools/crawl-status.js";
-import { SearchSchema, createSearchHandler } from "./tools/search.js";
+import { ExtractSchema, createExtractHandler } from "./tools/extract.js";
+import { DiscoverSchema, createDiscoverHandler } from "./tools/discover.js";
 import { MonitorSchema, createMonitorHandler } from "./tools/monitor.js";
 
 /**
@@ -32,95 +27,63 @@ export function createServer(): McpServer {
         tools: { listChanged: false },
       },
       instructions: [
-        "Cinder MCP exposes web scraping, crawling, search, and change-tracking via the Cinder API.",
+        'Cinder MCP — 3 resource-oriented tools (≤7 philosophy, arch.md "Why 7 Tools Instead of 17"): 1 tool per domain resource with `action` enum, not 1 tool per CRUD operation.',
         "",
-        "## Tools at a Glance",
-        "- `cinder_scrape` — scrape a single page (smart/static/dynamic), optional screenshots, images, summary, schema extraction",
-        "- `cinder_crawl` — async BFS crawl, returns task ID, poll with cinder_crawl_status",
-        "- `cinder_crawl_status` — poll crawl job (pending→active→completed/failed)",
-        "- `cinder_search` — web search via SearXNG (Brave fallback), supports domain filters, requiredText, maxAge, pagination",
-        "- `cinder_monitor` — create/check/delete a change-tracking monitor (use the `action` field)",
+        "## Tools (3 — resource-oriented multiplexing)",
+        "- `cinder_extract` — extraction resource: `scrape` (single page → markdown) | `links` (hyperlinks only) | `batch` (enqueue 20 URLs, Redis) | `batch_status` (poll batch)",
+        "- `cinder_discover` — discovery resource: `search` (SearXNG/Brave) | `map` (sitemap/traversal) | `crawl` (enqueue BFS, Redis) | `crawl_status` (poll crawl)",
+        "- `cinder_monitor` — change-tracking resource: `create` | `status` | `delete` (all Redis)",
         "",
         "## Tips",
-        "- Use `cinder_search` first to discover URLs, then scrape them.",
-        "- Crawl and monitor jobs are async — poll their status tools until done.",
-        "- Async tools (crawl, monitor) require a Redis-backed Cinder instance.",
+        "- Use `cinder_discover` (search/map) first to find URLs, then `cinder_extract` (scrape) to fetch them.",
+        "- Use `cinder_extract` action=links for lightweight hyperlink extraction (no markdown).",
+        "- Async actions (crawl/crawl_status, batch/batch_status, monitor) require Redis-backed Cinder — poll their status actions until done.",
       ].join("\n"),
     },
   );
 
-  // Register tool: cinder_scrape
+  // Resource: extraction — 1 tool per domain resource with `action` enum (arch.md "Why 7 Instead of 17")
+  // Consolidates former cinder_scrape + cinder_links + cinder_batch_scrape (3→1)
   server.tool(
     {
-      name: "cinder_scrape",
+      name: "cinder_extract",
       description:
-        "Scrape a single webpage into clean markdown (smart/static/dynamic), with optional screenshots, images, summary, and schema extraction",
-      schema: ScrapeSchema,
+        "Extraction resource (4 actions): `scrape` (single page → markdown, screenshots/images/summary/schema), `links` (hyperlinks only, no markdown), `batch` (enqueue 20 URLs async, Redis), `batch_status` (poll batch). Replaces cinder_scrape/cinder_links/cinder_batch_scrape.",
+      schema: ExtractSchema,
       annotations: {
-        readOnlyHint: true,
-        openWorldHint: true,
-        idempotentHint: true,
-        destructiveHint: false,
-      },
-    },
-    createScrapeHandler(client) as any,
-  );
-
-  // Register tool: cinder_crawl
-  server.tool(
-    {
-      name: "cinder_crawl",
-      description:
-        "Asynchronously crawl a website (returns task ID — poll with cinder_crawl_status)",
-      schema: CrawlSchema,
-      annotations: {
-        readOnlyHint: true,
+        readOnlyHint: false,
         openWorldHint: true,
         idempotentHint: false,
         destructiveHint: false,
       },
     },
-    createCrawlHandler(client) as any,
+    createExtractHandler(client) as any,
   );
 
-  // Register tool: cinder_crawl_status
+  // Resource: discovery — 1 tool per domain resource with `action` enum
+  // Consolidates former cinder_search + cinder_map + cinder_crawl (3→1, crawl already merged start/status)
   server.tool(
     {
-      name: "cinder_crawl_status",
-      description: "Poll a crawl job for status and results",
-      schema: CrawlStatusSchema,
+      name: "cinder_discover",
+      description:
+        "Discovery resource (4 actions): `search` (SearXNG/Brave, domain filters/pagination), `map` (sitemap/traversal), `crawl` (enqueue BFS async, Redis), `crawl_status` (poll crawl). Replaces cinder_search/cinder_map/cinder_crawl.",
+      schema: DiscoverSchema,
       annotations: {
-        readOnlyHint: true,
-        openWorldHint: false,
-        idempotentHint: true,
-        destructiveHint: false,
-      },
-    },
-    createCrawlStatusHandler(client) as any,
-  );
-
-  // Register tool: cinder_search
-  server.tool(
-    {
-      name: "cinder_search",
-      description: "Search the web via SearXNG with Brave fallback (domain filters, pagination)",
-      schema: SearchSchema,
-      annotations: {
-        readOnlyHint: true,
+        readOnlyHint: false,
         openWorldHint: true,
-        idempotentHint: true,
+        idempotentHint: false,
         destructiveHint: false,
       },
     },
-    createSearchHandler(client) as any,
+    createDiscoverHandler(client) as any,
   );
 
-  // Register tool: cinder_monitor (create / status / delete via `action`)
+  // Resource: change-tracking — already action-multiplexed (create|status|delete)
   server.tool(
     {
       name: "cinder_monitor",
       description:
-        "Manage change-tracking monitors. Set `action` to 'create' (hashes markdown, fires a signed webhook on change), 'status' (get config, last hash, next check), or 'delete' (stop and remove).",
+        "Change-tracking resource (3 actions): `create` (hashes markdown, fires signed webhook on change), `status` (config/last hash/next check), `delete` (stop & remove). Requires Redis.",
       schema: MonitorSchema,
       annotations: {
         readOnlyHint: false,
