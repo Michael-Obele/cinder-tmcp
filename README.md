@@ -1,35 +1,59 @@
 # Cinder MCP 🔥
 
-A [TMCP](https://tmcp.io/) (lightweight MCP) server that exposes the [Cinder](https://github.com/Michael-Obele/cinder) web scraping API to AI assistants through the [Model Context Protocol](https://modelcontextprotocol.io/).
+**Self-hosted Firecrawl alternative for AI agents — 4× lighter, 13× less RAM, with just 3 tools.**
 
-Cinder is a high-performance, self-hosted web scraping API built with Go. This MCP server wraps Cinder's endpoints as type-safe tools that AI assistants can use for web scraping, crawling, and search.
+A [TMCP](https://tmcp.io/) server that exposes [Cinder](https://github.com/Michael-Obele/cinder) (Go, self-hosted scraping API) to Claude, Cursor, Zed, and any [MCP](https://modelcontextprotocol.io/) client. One binary, hobby-tier RAM, no per-token bill — full Firecrawl parity with a fraction of the footprint.
 
-## Features
+> **Outcome:** Turn any site into LLM-ready markdown from your chat. No REST glue, no per-request browser spawn, no cloud bill.
 
-- **`cinder_scrape`** — Scrape a single webpage and get clean, LLM-ready markdown
-  - Smart/static/dynamic modes (auto-detect, Colly, or Chromedp)
-  - Optional screenshot capture, image extraction, extractive summary, deterministic CSS-selector extraction, and enriched `links` (Firecrawl `formats: ["links"]` parity, `{url, text, isInternal}` — toggle with `include_links`)
-- **`cinder_map`** — Discover URLs on a site without scraping content (POST /v1/map, Firecrawl Map parity)
-  - Sitemap/robots.txt traversal (recursive index, cap 5000) with link-discovery fallback
-  - `search` substring filter and `limit` (1-5000, default 100)
-- **`cinder_batch_scrape`** — Async batch scrape via Redis (POST /v1/batch/scrape + GET /v1/batch/:id, Firecrawl batch parity)
-  - `action: "scrape"` — enqueue up to 20 URLs, returns `batch_id` + task IDs
-  - `action: "status"` — poll aggregated `total/completed/failed` via `batch_id`
-- **`cinder_links`** — Extract hyperlinks only (POST /v1/scrape with `include_links`, Firecrawl `formats: ["links"]` parity)
-  - Returns enriched `{url, text, isInternal}` grouped into internal/external, resolved absolute and deduped
-- **`cinder_crawl`** — Asynchronously crawl entire websites with BFS link-following
-  - Configurable depth (1-10) and page limit (1-100)
-  - Path include/exclude globs, webhook notifications
-  - Returns a task ID — poll with `cinder_crawl_status`
-- **`cinder_crawl_status`** — Check the status of an async crawl job
-  - States: pending → active → completed/failed
-  - Returns a structured `crawl` result (pages with title + preview, failed URLs) when completed
-- **`cinder_search`** — Search the web via SearXNG/Brave (proxied through Cinder)
-  - Pagination, domain filtering, `requiredText`/`maxAge` filters, `fast` mode
-- **`cinder_monitor`** — Manage change-tracking monitors via the `action` field:
-  - `create` — hash a page's markdown and fire a signed webhook on change
-  - `status` — get monitor config, last hash, and next check time
-  - `delete` — stop monitoring and remove the monitor record
+## Why this exists
+
+| What hurts with hosted APIs                                            | What Cinder MCP gives you                                                | Outcome                                |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------- |
+| **$0.01–0.10 per scrape** + rate limits                                | **$0 self-hosted** — one Go binary + 3 containers                        | Ship RAG without a cloud bill          |
+| **Heavy Docker stacks** (Firecrawl: ~7.3 GB, 6 services, ~4.1 GiB RAM) | **Light stack: ~1.8 GB, 4 services, ~317 MiB RAM** — measured 2026-08-31 | Runs on a $5/mo hobby box              |
+| **8+ tools to choose from** → LLM misfires, token bloat                | **3 resource tools** with `action` enum (≤7 philosophy)                  | Faster, more accurate tool selection   |
+| **JS SPAs return empty HTML**                                          | **Smart mode** — static first, fallback to Chromedp                      | Works on React/Vue without guessing    |
+| **Noisy HTML**                                                         | **Readability main-content** + ad block                                  | Clean markdown your LLM actually wants |
+
+**Proof, not promises:**
+
+- **Docker size (measured 2026-08-31):** Cinder stack **1.79 GB** vs Firecrawl **7.26 GB** — **4× lighter** (see table below)
+- **Running RAM:** Cinder **~317 MiB** vs Firecrawl **~4.1 GiB** — **13× less**
+- **Search benchmark** ([Cinder `SEARCH_COMPARISON.md`](https://github.com/Michael-Obele/cinder/blob/main/docs/SEARCH_COMPARISON.md), 10 workers/30s): **Cinder 560 req/s p50 11ms** vs Firecrawl self-hosted **1.9 req/s p50 5.4s** — **~300× throughput** at same $0 cost
+
+## 3 tools, not 8 — resource-oriented multiplexing
+
+One tool per domain resource with `action` enum (see `arch.md` "Why 7 Tools Instead of 17" — collapsed 17→7). Fewer tools → less token overhead, higher LLM accuracy, stays under MCP client limits.
+
+| Tool                  | `action`       | What it does                                                                                                         | Endpoint                            |
+| --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| **`cinder_extract`**  | `scrape`       | Single page → clean markdown (smart/static/dynamic, screenshots, images, summary, `extract_schema`, `include_links`) | `POST /v1/scrape`                   |
+|                       | `links`        | Hyperlinks only — enriched `{url, text, isInternal}`, no markdown                                                    | `POST /v1/scrape` + `include_links` |
+|                       | `batch`        | Enqueue up to 20 URLs async (Redis) → `batch_id`                                                                     | `POST /v1/batch/scrape`             |
+|                       | `batch_status` | Poll batch `total/completed/failed`                                                                                  | `GET /v1/batch/:id`                 |
+| **`cinder_discover`** | `search`       | Web search via SearXNG (Brave fallback), domain filters, `requiredText`/`maxAge`/`fast`/`rerank`                     | `POST /v1/search`                   |
+|                       | `map`          | Discover URLs via sitemap/robots.txt/link fallback, `search` filter, `limit` 1–5000                                  | `POST /v1/map`                      |
+|                       | `crawl`        | Enqueue BFS crawl async (Redis) → task ID                                                                            | `POST /v1/crawl`                    |
+|                       | `crawl_status` | Poll crawl `pending→active→completed/failed`                                                                         | `GET /v1/crawl/:id`                 |
+| **`cinder_monitor`**  | `create`       | Hash markdown, fire signed webhook on change                                                                         | `POST /v1/monitor`                  |
+|                       | `status`       | Get config, last hash, next check                                                                                    | `GET /v1/monitor/:id`               |
+|                       | `delete`       | Stop & remove monitor                                                                                                | `DELETE /v1/monitor/:id`            |
+
+**How to use:** `cinder_discover` (search/map) to find URLs → `cinder_extract` (scrape) to fetch → `cinder_monitor` to watch for changes. Async actions (`crawl`, `batch`, `monitor`) require Redis — poll their `*_status` until done.
+
+## Docker size — the difference you feel
+
+Measured on the same host, 2026-08-31 (`docker images` + `docker stats --no-stream`):
+
+| Stack         | Images (pull size)                                                                                                                                           | Total pull   | Running RAM (all containers)                                                                                                          | Containers |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| **Cinder**    | `cinder-api` 1.08 GB + `searxng` 375 MB + `redis:7-alpine` 60.7 MB + `cinder-mcp` 274 MB                                                                     | **~1.79 GB** | **~317 MiB** (`api` 179 + `searxng` 115 + `redis` 11 + `mcp` 14)                                                                      | **4**      |
+| **Firecrawl** | `firecrawl` 2.49 GB + `playwright-service` 2.03 GB + `nuq-postgres` 642 MB + `redis:alpine` 160 MB + `rabbitmq:3-management` 389 MB + `foundationdb` 1.55 GB | **~7.26 GB** | **~4.1 GiB** (`api` 3.09 GiB + `playwright` 391 MiB + `rabbitmq` 452 MiB + `postgres` 85 MiB + `foundationdb` 76 MiB + `redis` 8 MiB) | **6**      |
+
+**Outcome:** Cinder pulls **4× less**, runs in **13× less RAM**, needs **2 fewer services**. On a 512 MB Fly.io `shared-cpu-1x` or $5 Hetzner, Cinder fits — Firecrawl doesn't.
+
+> Reproduce: `docker images --format "{{.Repository}}:{{.Tag}} {{.Size}}"` and `docker stats --no-stream` while both stacks are up. Numbers are host-measured, not marketing.
 
 ## Architecture
 
@@ -123,24 +147,21 @@ When enabled, the server uses `@tmcp/auth`'s `SimpleProvider` with in-memory sto
 cinder-tmcp/
 ├── src/
 │   ├── index.ts              # Entry point (HTTP + STDIO servers)
-│   ├── server.ts             # McpServer config & tool registration
+│   ├── server.ts             # McpServer config & 3 resource tools
 │   ├── config.ts             # Environment configuration
 │   ├── client.ts             # Cinder HTTP API client
 │   ├── auth-provider.ts      # OAuth 2.1 provider setup
 │   └── tools/
-│       ├── scrape.ts         # cinder_scrape tool (now with include_links)
-│       ├── map.ts            # cinder_map tool (POST /v1/map)
-│       ├── batch.ts          # cinder_batch_scrape tool (POST + GET /v1/batch)
-│       ├── links.ts          # cinder_links tool (links-only proxy)
-│       ├── crawl.ts          # cinder_crawl tool
-│       ├── crawl-status.ts   # cinder_crawl_status tool
-│       ├── search.ts         # cinder_search tool
-│       └── monitor.ts        # cinder_monitor tool (create/status/delete)
+│       ├── extract.ts        # cinder_extract (scrape|links|batch|batch_status)
+│       ├── discover.ts       # cinder_discover (search|map|crawl|crawl_status)
+│       └── monitor.ts        # cinder_monitor (create|status|delete)
 ├── cinder-mcp/               # Design docs & implementation notes
 ├── .env.example
 ├── tsconfig.json
 └── package.json
 ```
+
+> **Design:** 3 resource-oriented tools (≤7 philosophy) — 1 tool per domain resource with `action` enum, not 1 tool per operation. See `src/server.ts` instructions and `src/tools/extract.ts` / `discover.ts` for the `v.variant("action", [...])` pattern.
 
 ## Development
 
