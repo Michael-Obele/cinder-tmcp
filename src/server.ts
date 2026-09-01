@@ -1,6 +1,14 @@
 import { McpServer } from "tmcp";
 import { ValibotJsonSchemaAdapter } from "@tmcp/adapter-valibot";
 import { getConfig } from "./config.js";
+
+class FixedValibotAdapter extends ValibotJsonSchemaAdapter {
+  async toJsonSchema(schema: any) {
+    const s: any = await super.toJsonSchema(schema);
+    if (!s.type && (s.oneOf || s.anyOf)) s.type = "object";
+    return s;
+  }
+}
 import { CinderClient } from "./client.js";
 import { ExtractSchema, createExtractHandler } from "./tools/extract.js";
 import { DiscoverSchema, createDiscoverHandler } from "./tools/discover.js";
@@ -22,7 +30,7 @@ export function createServer(): McpServer {
         "Cinder MCP — web scraping, crawling, and search powered by Cinder API",
     },
     {
-      adapter: new ValibotJsonSchemaAdapter(),
+      adapter: new FixedValibotAdapter(),
       capabilities: {
         tools: { listChanged: false },
       },
