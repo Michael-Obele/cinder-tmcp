@@ -1,10 +1,14 @@
 import * as v from "valibot";
-import type { CinderClient, ScrapeParams } from "../client.js";
+import type {
+  CinderClient,
+  ScrapeParams,
+  MultiScrapeParams,
+} from "../client.js";
 
 /**
  * Resource-oriented multiplexed extraction tool.
  * Consolidates `cinder_scrape` + `cinder_links` + `cinder_batch_scrape`
- * into a single `cinder_extract` resource (4→1).
+ * into a single `cinder_extract` resource (5→1 with scrape_multi).
  *
  * Principle: 1 tool per domain resource with `action` enum
  * (arch.md "Why 7 Tools Instead of 17" — FlarelyLegal 17→7).
@@ -13,8 +17,9 @@ import type { CinderClient, ScrapeParams } from "../client.js";
  *
  * Actions:
  * - `scrape`       — single page → markdown (POST /v1/scrape)
+ * - `scrape_multi` — sync multi-URL scrape, no Redis (POST /v1/scrape {urls}, max 10, errgroup 5)
  * - `links`        — hyperlinks only (POST /v1/scrape {include_links})
- * - `batch`        — enqueue up to 20 URLs (POST /v1/batch/scrape, Redis)
+ * - `batch`        — enqueue up to 20 URLs async (POST /v1/batch/scrape, Redis)
  * - `batch_status` — poll batch (GET /v1/batch/:id, Redis)
  */
 
@@ -184,6 +189,135 @@ const ExtractScrapeShape = v.object({
   ),
 });
 
+// ── scrape_multi (sync, no Redis) ─────────────────────────────────────
+const ExtractMultiScrapeShape = v.object({
+  action: v.pipe(
+    v.picklist(["scrape_multi"]),
+    v.description(
+      "Scrape multiple URLs synchronously (max 10, no Redis) — mirrors web_fetch_exa & Firecrawl batch sync",
+    ),
+  ),
+  urls: v.pipe(
+    v.array(v.pipe(v.string(), v.url("Must be a valid URL"))),
+    v.minLength(1, "At least one URL is required"),
+    v.maxLength(10, "Maximum 10 URLs per sync batch"),
+    v.description(
+      "URLs to scrape synchronously (max 10, no Redis, errgroup limit 5)",
+    ),
+  ),
+  mode: v.optional(
+    v.pipe(
+      v.picklist(["smart", "static", "dynamic"]),
+      v.description(
+        "Scraping mode: smart (auto), static (colly), dynamic (chromedp)",
+      ),
+    ),
+    "smart",
+  ),
+  screenshot: v.optional(
+    v.pipe(v.boolean(), v.description("Capture a screenshot")),
+    false,
+  ),
+  screenshot_opts: v.optional(
+    v.pipe(
+      v.object({
+        width: v.optional(v.number()),
+        height: v.optional(v.number()),
+        full_page: v.optional(v.boolean()),
+        format: v.optional(v.picklist(["jpeg", "png"])),
+        quality: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(100))),
+        wait_selector: v.optional(v.string()),
+      }),
+      v.description("Screenshot configuration"),
+    ),
+  ),
+  images: v.optional(
+    v.pipe(v.boolean(), v.description("Extract images")),
+    false,
+  ),
+  image_format: v.optional(
+    v.pipe(
+      v.picklist(["url", "blob"]),
+      v.description("Image transport: url or blob"),
+    ),
+    "url",
+  ),
+  max_images: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(50)), 10),
+  max_image_size_kb: v.optional(v.pipe(v.number(), v.minValue(1)), 5120),
+  image_process: v.optional(
+    v.pipe(
+      v.object({
+        format: v.optional(v.picklist(["jpeg", "png"])),
+        max_width: v.optional(v.number()),
+        quality: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(100))),
+      }),
+      v.description("Resize/re-encode image blobs"),
+    ),
+  ),
+  actions: v.optional(
+    v.pipe(
+      v.array(
+        v.object({
+          type: v.picklist([
+            "wait_ms",
+            "wait_selector",
+            "click",
+            "scroll_down",
+            "scroll_to_bottom",
+          ]),
+          ms: v.optional(v.number()),
+          selector: v.optional(v.string()),
+        }),
+      ),
+      v.description("Page interactions before capture (dynamic mode only)"),
+    ),
+  ),
+  extract_schema: v.optional(
+    v.pipe(
+      v.record(
+        v.string(),
+        v.object({
+          selector: v.string(),
+          attr: v.optional(v.string()),
+          multiple: v.optional(v.boolean()),
+        }),
+      ),
+      v.description("Deterministic CSS-selector extraction"),
+    ),
+  ),
+  summary: v.optional(
+    v.pipe(v.boolean(), v.description("Return an extractive summary")),
+    false,
+  ),
+  summary_sentences: v.optional(
+    v.pipe(v.number(), v.minValue(1), v.maxValue(50)),
+    5,
+  ),
+  redact_pii: v.optional(
+    v.pipe(v.boolean(), v.description("Mask emails, phones, card numbers")),
+    false,
+  ),
+  block_ads: v.optional(
+    v.pipe(v.boolean(), v.description("Strip ad/tracker containers")),
+    true,
+  ),
+  remove_base64_images: v.optional(
+    v.pipe(v.boolean(), v.description("Drop inline data: images")),
+    true,
+  ),
+  include_links: v.optional(
+    v.pipe(
+      v.boolean(),
+      v.description("Include extracted links (default true)"),
+    ),
+    true,
+  ),
+  render: v.optional(
+    v.pipe(v.boolean(), v.description("Deprecated: behaves like mode=dynamic")),
+    false,
+  ),
+});
+
 // ── links ──────────────────────────────────────────────────────────────
 const ExtractLinksShape = v.object({
   action: v.pipe(
@@ -226,6 +360,7 @@ const ExtractBatchStatusShape = v.object({
 
 export const ExtractSchema = v.variant("action", [
   ExtractScrapeShape,
+  ExtractMultiScrapeShape,
   ExtractLinksShape,
   ExtractBatchShape,
   ExtractBatchStatusShape,
@@ -299,6 +434,91 @@ export function createExtractHandler(client: CinderClient) {
           }
           if (result.links.length > 50)
             lines.push(`- ... and ${result.links.length - 50} more`);
+        }
+        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+      }
+
+      if (action === "scrape_multi") {
+        const params = input as unknown as MultiScrapeParams & {
+          action: string;
+        };
+        const result = await client.scrapeMulti(params);
+        const lines: string[] = [
+          `# Multi-Scrape Results (${result.results.length} URLs)`,
+          "",
+        ];
+        for (let i = 0; i < result.results.length; i++) {
+          const item = result.results[i];
+          if (item.error) {
+            lines.push(
+              `## Result ${i + 1}: ❌ ${item.url}`,
+              "",
+              `**Error:** ${item.error}`,
+              "",
+              "---",
+              "",
+            );
+            continue;
+          }
+          const title = item.title || item.url;
+          const wc =
+            item.word_count != null
+              ? `**Words:** ${item.word_count.toLocaleString()}`
+              : "";
+          lines.push(
+            `## Result ${i + 1}: ${title}`,
+            "",
+            `**URL:** ${item.url}`,
+          );
+          if (wc) lines.push(wc);
+          if (item.summary) lines.push("", "### Summary", "", item.summary);
+          if (item.extracted && Object.keys(item.extracted).length > 0) {
+            lines.push("", "### Extracted", "");
+            for (const [k, val] of Object.entries(item.extracted))
+              lines.push(
+                `- **${k}:** ${typeof val === "string" ? val : JSON.stringify(val)}`,
+              );
+          }
+          lines.push("", "---", "", item.markdown ?? "_(no markdown)_");
+          if (item.images && item.images.length > 0) {
+            lines.push("", `### Images (${item.images.length})`, "");
+            for (const img of item.images) {
+              const label =
+                img.alt || img.title || img.source || img.url || "image";
+              if (img.url) lines.push(`- [${label}](${img.url})`);
+              else if (img.blob)
+                lines.push(
+                  `- ${label} (base64 ${img.format ?? ""}${img.size_bytes ? `, ${img.size_bytes} bytes` : ""})`,
+                );
+              else lines.push(`- ${label}`);
+            }
+          }
+          if (item.screenshot) {
+            lines.push("", "### Screenshot", "");
+            if (item.screenshot.url)
+              lines.push(`- [screenshot](${item.screenshot.url})`);
+            else if (item.screenshot.blob)
+              lines.push(
+                `- screenshot captured (base64 ${item.screenshot.format ?? ""}${item.screenshot.size_bytes ? `, ${item.screenshot.size_bytes} bytes` : ""})`,
+              );
+          }
+          if (item.metadata && Object.keys(item.metadata).length > 0) {
+            lines.push("", "### Metadata", "");
+            for (const [k, val] of Object.entries(item.metadata))
+              lines.push(`- **${k}:** ${val}`);
+          }
+          if (item.links && item.links.length > 0) {
+            lines.push("", `### Links (${item.links.length})`, "");
+            for (const link of item.links.slice(0, 20)) {
+              const label = link.text ? ` — "${link.text.slice(0, 60)}"` : "";
+              lines.push(
+                `- ${link.url}${label} _(${link.isInternal ? "internal" : "external"})_`,
+              );
+            }
+            if (item.links.length > 20)
+              lines.push(`- ... and ${item.links.length - 20} more`);
+          }
+          lines.push("", "---", "");
         }
         return { content: [{ type: "text" as const, text: lines.join("\n") }] };
       }

@@ -99,6 +99,47 @@ export interface ScrapeResult {
   links?: LinkData[];
 }
 
+export interface MultiScrapeParams {
+  urls: string[];
+  mode?: "smart" | "static" | "dynamic";
+  screenshot?: boolean;
+  screenshot_opts?: ScreenshotOpts;
+  images?: boolean;
+  image_format?: "url" | "blob";
+  max_images?: number;
+  max_image_size_kb?: number;
+  image_process?: ImageProcessOpts;
+  actions?: ScrapeAction[];
+  extract_schema?: Record<string, ExtractField>;
+  summary?: boolean;
+  summary_sentences?: number;
+  redact_pii?: boolean;
+  block_ads?: boolean;
+  remove_base64_images?: boolean;
+  include_links?: boolean;
+  /** @deprecated Use `mode: "dynamic"` instead. */
+  render?: boolean;
+}
+
+export interface MultiScrapeItem {
+  url: string;
+  title?: string;
+  word_count?: number;
+  markdown?: string;
+  html?: string;
+  metadata?: Record<string, string>;
+  screenshot?: ScreenshotData;
+  images?: ImageData[];
+  links?: LinkData[];
+  extracted?: Record<string, unknown>;
+  summary?: string;
+  error?: string;
+}
+
+export interface MultiScrapeResponse {
+  results: MultiScrapeItem[];
+}
+
 // ---------------------------------------------------------------------------
 // Crawl types
 // ---------------------------------------------------------------------------
@@ -430,6 +471,29 @@ export class CinderClient {
   }
 
   /**
+   * Scrape multiple URLs synchronously (no Redis).
+   * POST /v1/scrape with { urls: [...] } — mirrors web_fetch_exa and
+   * Firecrawl POST /v2/batch/scrape sync. Max 10 URLs, errgroup limit 5.
+   */
+  async scrapeMulti(params: MultiScrapeParams): Promise<MultiScrapeResponse> {
+    for (const u of params.urls) {
+      if (!validateUrl(u)) {
+        throw new CinderError(
+          `Invalid or blocked URL in multi-scrape: ${u}. Only HTTP(S) URLs to public hosts are allowed.`,
+          400,
+          "",
+        );
+      }
+    }
+    return this.request<MultiScrapeResponse>(
+      "POST",
+      "/v1/scrape",
+      params,
+      CINDER_TIMEOUT.scrape,
+    );
+  }
+
+  /**
    * Enqueue an asynchronous crawl job.
    * POST /v1/crawl
    */
@@ -487,7 +551,12 @@ export class CinderClient {
         "",
       );
     }
-    return this.request<MapResponse>("POST", "/v1/map", params, CINDER_TIMEOUT.map);
+    return this.request<MapResponse>(
+      "POST",
+      "/v1/map",
+      params,
+      CINDER_TIMEOUT.map,
+    );
   }
 
   /**

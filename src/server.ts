@@ -38,25 +38,26 @@ export function createServer(): McpServer {
         'Cinder MCP — 3 resource-oriented tools (≤7 philosophy, arch.md "Why 7 Tools Instead of 17"): 1 tool per domain resource with `action` enum, not 1 tool per CRUD operation.',
         "",
         "## Tools (3 — resource-oriented multiplexing)",
-        "- `cinder_extract` — extraction resource: `scrape` (single page → markdown) | `links` (hyperlinks only) | `batch` (enqueue 20 URLs, Redis) | `batch_status` (poll batch)",
+        "- `cinder_extract` — extraction resource: `scrape` (single page → markdown) | `scrape_multi` (sync multi-URL, max 10, no Redis) | `links` (hyperlinks only) | `batch` (enqueue 20 URLs, Redis) | `batch_status` (poll batch)",
         "- `cinder_discover` — discovery resource: `search` (SearXNG/Brave) | `map` (sitemap/traversal) | `crawl` (enqueue BFS, Redis) | `crawl_status` (poll crawl)",
         "- `cinder_monitor` — change-tracking resource: `create` | `status` | `delete` (all Redis)",
         "",
         "## Tips",
-        "- Use `cinder_discover` (search/map) first to find URLs, then `cinder_extract` (scrape) to fetch them.",
+        "- Use `cinder_discover` (search/map) first to find URLs, then `cinder_extract` (scrape/scrape_multi) to fetch them.",
         "- Use `cinder_extract` action=links for lightweight hyperlink extraction (no markdown).",
+        "- Use `cinder_extract` action=scrape_multi for 2–10 URLs in one call (no Redis, mirrors web_fetch_exa).",
         "- Async actions (crawl/crawl_status, batch/batch_status, monitor) require Redis-backed Cinder — poll their status actions until done.",
       ].join("\n"),
     },
   );
 
   // Resource: extraction — 1 tool per domain resource with `action` enum (arch.md "Why 7 Instead of 17")
-  // Consolidates former cinder_scrape + cinder_links + cinder_batch_scrape (3→1)
+  // Consolidates former cinder_scrape + cinder_links + cinder_batch_scrape (3→1) + scrape_multi (sync multi-URL)
   server.tool(
     {
       name: "cinder_extract",
       description:
-        "Extraction resource (4 actions): `scrape` (single page → markdown, screenshots/images/summary/schema), `links` (hyperlinks only, no markdown), `batch` (enqueue 20 URLs async, Redis), `batch_status` (poll batch). Replaces cinder_scrape/cinder_links/cinder_batch_scrape.",
+        "Extraction resource (5 actions): `scrape` (single page → markdown, screenshots/images/summary/schema), `scrape_multi` (sync multi-URL max 10, no Redis, mirrors web_fetch_exa), `links` (hyperlinks only, no markdown), `batch` (enqueue 20 URLs async, Redis), `batch_status` (poll batch). Replaces cinder_scrape/cinder_links/cinder_batch_scrape.",
       schema: ExtractSchema,
       annotations: {
         readOnlyHint: false,
