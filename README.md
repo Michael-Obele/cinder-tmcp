@@ -29,6 +29,7 @@ One tool per domain resource with `action` enum (see `arch.md` "Why 7 Tools Inst
 | Tool                  | `action`       | What it does                                                                                                         | Endpoint                            |
 | --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
 | **`cinder_extract`**  | `scrape`       | Single page → clean markdown (smart/static/dynamic, screenshots, images, summary, `extract_schema`, `include_links`) | `POST /v1/scrape`                   |
+|                       | `scrape_multi` | Sync multi-URL (max 10, no Redis, errgroup 5) — mirrors `web_fetch_exa` & Firecrawl batch sync                      | `POST /v1/scrape` + `urls`          |
 |                       | `links`        | Hyperlinks only — enriched `{url, text, isInternal}`, no markdown                                                    | `POST /v1/scrape` + `include_links` |
 |                       | `batch`        | Enqueue up to 20 URLs async (Redis) → `batch_id`                                                                     | `POST /v1/batch/scrape`             |
 |                       | `batch_status` | Poll batch `total/completed/failed`                                                                                  | `GET /v1/batch/:id`                 |
@@ -40,7 +41,9 @@ One tool per domain resource with `action` enum (see `arch.md` "Why 7 Tools Inst
 |                       | `status`       | Get config, last hash, next check                                                                                    | `GET /v1/monitor/:id`               |
 |                       | `delete`       | Stop & remove monitor                                                                                                | `DELETE /v1/monitor/:id`            |
 
-**How to use:** `cinder_discover` (search/map) to find URLs → `cinder_extract` (scrape) to fetch → `cinder_monitor` to watch for changes. Async actions (`crawl`, `batch`, `monitor`) require Redis — poll their `*_status` until done.
+**How to use:** `cinder_discover` (search/map) to find URLs → `cinder_extract` (scrape/`scrape_multi`) to fetch → `cinder_monitor` to watch for changes. `scrape_multi` handles 2–10 URLs in one call with no Redis (mirrors `web_fetch_exa`). Async actions (`crawl`, `batch`, `monitor`) require Redis — poll their `*_status` until done.
+
+> **Deep dive:** See [`MCP_COMPARISON.md`](MCP_COMPARISON.md) for the full Exa vs Firecrawl vs Cinder comparison — TL;DR, tool inventory, head-to-head matrix, and decision guide.
 
 ## Docker size — the difference you feel
 
@@ -59,7 +62,7 @@ Measured on the same host, 2026-08-31 (`docker images` + `docker stats --no-stre
 
 ```mermaid
 flowchart LR
-    Client["MCP Client<br>Claude / Cursor / Zed<br>Inspector"] -->|"MCP<br>tools/list, tools/call<br>HTTP / SSE / STDIO"| MCP["Cinder MCP Server<br>tmcp + Bun :3000<br><br>cinder_extract<br>cinder_discover<br>cinder_monitor<br>(3 tools, action enum)"]
+    Client["MCP Client<br>Claude / Cursor / Zed<br>Inspector"] -->|"MCP<br>tools/list, tools/call<br>HTTP / SSE / STDIO"| MCP["Cinder MCP Server<br>tmcp + Bun :3000<br><br>cinder_extract 5 actions<br>cinder_discover 4 actions<br>cinder_monitor 3 actions<br>(3 tools, action enum)"]
     MCP -->|"HTTP REST<br>/v1/*"| API["Cinder API<br>Go :8080"]
     API --> Scraper["Chromium + Colly<br>Readability to Markdown"]
     API --> Search["SearXNG / Brave<br>Search + Highlights"]
