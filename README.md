@@ -48,7 +48,7 @@ Measured on the same host, 2026-08-31 (`docker images` + `docker stats --no-stre
 
 | Stack         | Images (pull size)                                                                                                                                           | Total pull   | Running RAM (all containers)                                                                                                          | Containers |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| **Cinder**    | `cinder-api` 1.08 GB + `searxng` 375 MB + `redis:7-alpine` 60.7 MB + `cinder-mcp` 274 MB                                                                     | **~1.79 GB** | **~317 MiB** (`api` 179 + `searxng` 115 + `redis` 11 + `mcp` 14)                                                                      | **4**      |
+| **Cinder**    | `cinder-api` 1.08 GB + `searxng` 375 MB + `redis:7-alpine` 60.7 MB + `cinder-mcp` 274 MB                                                                     | **~1.79 GB** | **~317 MiB** (`api` 179 MiB + `searxng` 115 MiB + `redis` 11 MiB + `mcp` 14 MiB)                                                      | **4**      |
 | **Firecrawl** | `firecrawl` 2.49 GB + `playwright-service` 2.03 GB + `nuq-postgres` 642 MB + `redis:alpine` 160 MB + `rabbitmq:3-management` 389 MB + `foundationdb` 1.55 GB | **~7.26 GB** | **~4.1 GiB** (`api` 3.09 GiB + `playwright` 391 MiB + `rabbitmq` 452 MiB + `postgres` 85 MiB + `foundationdb` 76 MiB + `redis` 8 MiB) | **6**      |
 
 **Outcome:** Cinder pulls **4× less**, runs in **13× less RAM**, needs **2 fewer services**. On a 512 MB Fly.io `shared-cpu-1x` or $5 Hetzner, Cinder fits — Firecrawl doesn't.
@@ -58,12 +58,16 @@ Measured on the same host, 2026-08-31 (`docker images` + `docker stats --no-stre
 ## Architecture
 
 ```mermaid
-graph LR
-    A[MCP Client<br/>Claude, Cursor, etc.] -->|tools/list<br/>tools/call| B[Cinder MCP Server<br/>tmcp + Bun]
-    B -->|HTTP REST| C[Cinder API<br/>Go backend]
-    C -->|scrape/crawl| D[Chromium<br/>Colly]
-    C -->|async jobs| E[Redis<br/>Asynq Queue]
-    B -->|OAuth 2.1| F[Authorization<br/>Server]
+flowchart LR
+    Client["MCP Client<br>Claude / Cursor / Zed<br>Inspector"] -->|"MCP<br>tools/list, tools/call<br>HTTP / SSE / STDIO"| MCP["Cinder MCP Server<br>tmcp + Bun :3000<br><br>cinder_extract<br>cinder_discover<br>cinder_monitor<br>(3 tools, action enum)"]
+    MCP -->|"HTTP REST<br>/v1/*"| API["Cinder API<br>Go :8080"]
+    API --> Scraper["Chromium + Colly<br>Readability to Markdown"]
+    API --> Search["SearXNG / Brave<br>Search + Highlights"]
+    API -.->|"async<br>crawl, batch, monitor"| Queue["Redis + Asynq<br>Queue and Cache"]
+    MCP -.->|"OAuth 2.1<br>@tmcp/auth (optional)"| Auth["Auth Server"]
+    style MCP fill:#0f172a,stroke:#e94560,color:#fff
+    style API fill:#1e293b,stroke:#38bdf8,color:#fff
+    style Queue fill:#1e1b4b,stroke:#a78bfa,color:#fff
 ```
 
 ## Technology Stack
