@@ -104,6 +104,12 @@ serve({
     return new Response(null, { status: 404 });
   },
   port: Number(config.PORT),
+  // SearXNG can take >10s when upstream engines are slow/suspended —
+  // Bun's default idleTimeout (10s) killed the MCP call with
+  // "Controller is already closed". 60s matches CINDER_TIMEOUT.search.
+  bun: {
+    idleTimeout: 60,
+  },
 });
 
 // Graceful shutdown for Fly.io (sends SIGTERM on deploy/stop)
