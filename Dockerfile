@@ -3,6 +3,8 @@ FROM oven/bun:1 AS deps
 WORKDIR /app
 
 # Install dependencies first (separate layer for caching)
+# Copy scripts first so postinstall can patch tmcp transports
+COPY scripts/ ./scripts/
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 

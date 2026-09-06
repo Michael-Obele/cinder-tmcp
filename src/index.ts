@@ -29,6 +29,25 @@ const sse_transport = new SseTransport(server, {
 
 serve({
   async fetch(request) {
+    // Bun kills idle connections after 10s by default (idleTimeout). MCP's
+    // Streamable HTTP (GET /mcp) and legacy SSE (GET /sse) are long-lived
+    // streams that sit idle between server→client notifications for minutes.
+    // Without this, Bun aborts the stream and tmcp's controller.enqueue()
+    // throws "Controller is already closed" → process crash → Docker restart loop.
+    // Mirrors effing-use/src/http.ts fix (idleTimeout: 0 + server.timeout(req,0)).
+    try {
+      const runtime = (request as unknown as { runtime?: { bun?: { server?: { timeout: (req: Request, secs: number) => void } } } }).runtime;
+      const bunServer = runtime?.bun?.server;
+      if (bunServer) {
+        const { pathname } = new URL(request.url);
+        if (pathname === "/mcp" || pathname === "/sse" || pathname === "/message") {
+          bunServer.timeout(request, 0);
+        }
+      }
+    } catch {
+      // ignore — srvx may not expose runtime in all environments (e.g. tests)
+    }
+
     // Compatibility: opencode's MCP client sends initialize without protocolVersion
     // (causes tmcp validation: Expected "protocolVersion" but received undefined).
     // Inject a default if missing so the handshake succeeds — other clients (VS Code, curl)
@@ -104,11 +123,14 @@ serve({
     return new Response(null, { status: 404 });
   },
   port: Number(config.PORT),
-  // SearXNG can take >10s when upstream engines are slow/suspended —
-  // Bun's default idleTimeout (10s) killed the MCP call with
-  // "Controller is already closed". 60s matches CINDER_TIMEOUT.search.
+  // Bun's default idleTimeout (10s) kills *any* idle connection, including
+  // long-lived MCP SSE streams (GET /mcp, GET /sse) and slow SearXNG searches.
+  // 60s was not enough — SSE sits idle for minutes between notifications.
+  // idleTimeout: 0 disables the global idle kill (safe: this is an MCP-only
+  // service). Per-request server.timeout(req,0) above is the belt; this is
+  // the suspenders. Matches effing-use fix (verified 25s+ stable).
   bun: {
-    idleTimeout: 60,
+    idleTimeout: 0,
   },
 });
 

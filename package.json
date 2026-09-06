@@ -8,7 +8,9 @@
 		"start": "bun run src/index.ts",
 		"dev": "bun run --watch src/index.ts",
 		"typecheck": "tsc --noEmit",
-		"check": "bun run typecheck"
+		"check": "bun run typecheck",
+		"patch:tmcp": "node scripts/patch-tmcp-transports.mjs",
+		"postinstall": "node scripts/patch-tmcp-transports.mjs"
 	},
 	"keywords": [
 		"tmcp",
