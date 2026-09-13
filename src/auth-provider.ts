@@ -78,7 +78,7 @@ export const oauth = new SimpleProvider({
       refreshTokens.delete(token);
     },
   },
-}).build("http://localhost:3000", {
+}).build("http://localhost:9631", {
   bearer: {
     paths: {
       POST: ["/mcp"],

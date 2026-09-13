@@ -16,7 +16,7 @@ const ConfigSchema = v.object({
   MCP_SERVER_VERSION: v.optional(v.string(), "1.0.0"),
 
   /** HTTP server port */
-  PORT: v.optional(v.pipe(v.string(), v.transform(Number)), "3000"),
+  PORT: v.optional(v.pipe(v.string(), v.transform(Number)), "9631"),
 
   /** OAuth 2.1 configuration */
   OAUTH_ENABLED: v.optional(

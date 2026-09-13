@@ -62,7 +62,7 @@ Measured on the same host, 2026-08-31 (`docker images` + `docker stats --no-stre
 
 ```mermaid
 flowchart LR
-    Client["MCP Client<br>Claude / Cursor / Zed<br>Inspector"] -->|"MCP<br>tools/list, tools/call<br>HTTP / SSE / STDIO"| MCP["Cinder MCP Server<br>tmcp + Bun :3000<br><br>cinder_extract 5 actions<br>cinder_discover 4 actions<br>cinder_monitor 3 actions<br>(3 tools, action enum)"]
+    Client["MCP Client<br>Claude / Cursor / Zed<br>Inspector"] -->|"MCP<br>tools/list, tools/call<br>HTTP / SSE / STDIO"| MCP["Cinder MCP Server<br>tmcp + Bun :9631<br><br>cinder_extract 5 actions<br>cinder_discover 4 actions<br>cinder_monitor 3 actions<br>(3 tools, action enum)"]
     MCP -->|"HTTP REST<br>/v1/*"| API["Cinder API<br>Go :8080"]
     API --> Scraper["Chromium + Colly<br>Readability to Markdown"]
     API --> Search["SearXNG / Brave<br>Search + Highlights"]
@@ -117,17 +117,17 @@ bun start
 bun dev
 ```
 
-The server starts on port 3000 by default and supports:
+The server starts on port 9631 by default and supports:
 
-- **HTTP (MCP Streamable HTTP):** `http://localhost:3000/mcp`
-- **SSE (legacy):** `http://localhost:3000/sse`
+- **HTTP (MCP Streamable HTTP):** `http://localhost:9631/mcp`
+- **SSE (legacy):** `http://localhost:9631/sse`
 - **STDIO:** For local CLI tools
-- **Health:** `http://localhost:3000/health`
+- **Health:** `http://localhost:9631/health`
 
 ### Test with MCP Inspector
 
 ```bash
-npx @modelcontextprotocol/inspector http://localhost:3000/mcp
+npx @modelcontextprotocol/inspector http://localhost:9631/mcp
 ```
 
 ## Configuration
@@ -138,7 +138,7 @@ All configuration is via environment variables (see `.env.example`):
 | ---------------- | ------- | --------------------------------- |
 | `CINDER_API_URL` | —       | Your Cinder API instance          |
 | `CINDER_API_KEY` | —       | Optional API key                  |
-| `PORT`           | `3000`  | HTTP server port                  |
+| `PORT`           | `9631`  | HTTP server port                  |
 | `OAUTH_ENABLED`  | `false` | Enable OAuth 2.1 auth             |
 | `LOG_LEVEL`      | `info`  | Log level (debug/info/warn/error) |
 

@@ -129,7 +129,7 @@ curl http://localhost:8080/health  # → {"status":"ok"}
 # MCP server
 git clone https://github.com/Michael-Obele/cinder-tmcp.git && cd cinder-tmcp
 bun install && cp .env.example .env  # set CINDER_API_URL
-bun dev  # → http://localhost:3000/mcp
+bun dev  # → http://localhost:9631/mcp
 ```
 
 ---
